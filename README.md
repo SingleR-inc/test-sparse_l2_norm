@@ -8,6 +8,13 @@ The reference objects store the values of each reference profile in sorted order
 Spearman's correlation is derived from the L2 norm of the difference between the vectors of scaled ranks of the query and reference profiles. 
 The question is, what is the fastest way to compute this L2 norm?
 
+To run these timings, use the usual CMake process:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
+
 ## Algorithms
 
 `dense-dense`: when both the query and reference are dense, we use the sorted reference profile vector to populate a dense array.
