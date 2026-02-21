@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.14)
 
-project(divmult
+project(singler-perf
     VERSION 1.0.0
-    DESCRIPTION "Performance tests for division vs multiplication"
+    DESCRIPTION "Performance tests for SingleR's scaling calculations"
     LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -26,3 +26,6 @@ FetchContent_MakeAvailable(eztimer)
 
 add_executable(basic basic.cpp)
 target_link_libraries(basic CLI11::CLI11 tatami::eztimer)
+
+add_executable(fine_tune fine_tune.cpp)
+target_link_libraries(fine_tune CLI11::CLI11 tatami::eztimer)

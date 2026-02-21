@@ -31,16 +31,7 @@ int main(int argc, char ** argv) {
     double zero_query;
     std::vector<double> dense_query(len);
 
-    RankedVector negative_ref, positive_ref;
-    std::vector<std::pair<int, double> > sparse_ref;
-    sparse_ref.reserve(len);
-    std::vector<int> sparse_ref_index;
-    sparse_ref_index.reserve(len);
-    std::vector<double> sparse_ref_value;
-    sparse_ref_value.reserve(len);
-    double zero_ref;
-    std::vector<double> dense_ref(len);
-
+    RankedVector negative_ref, positive_ref, full_ref;
     std::optional<double> result;
 
     // Setting up the simulation at each iteration.
@@ -77,6 +68,7 @@ int main(int argc, char ** argv) {
         // Generating the reference elements.
         negative_ref.clear();
         positive_ref.clear();
+        full_ref.clear();
         for (int i = 0; i < len; ++i) {
             if (unifdist(rng) <= density) {
                 double val = normdist(rng);
@@ -85,23 +77,15 @@ int main(int argc, char ** argv) {
                 } else if (val > 0) {
                     positive_ref.emplace_back(val, i);
                 }
+                full_ref.emplace_back(val, i);
+            } else {
+                full_ref.emplace_back(0, i);
             }
         }
 
         std::sort(negative_ref.begin(), negative_ref.end());
         std::sort(positive_ref.begin(), positive_ref.end());
-        zero_ref = scaled_ranks(len, negative_ref, positive_ref, sparse_ref);
-        std::sort(sparse_ref.begin(), sparse_ref.end());
-
-        sparse_ref_index.clear();
-        sparse_ref_value.clear();
-        dense_ref.resize(len);
-        std::fill(dense_ref.begin(), dense_ref.end(), zero_ref);
-        for (const auto& sr : sparse_ref) {
-            sparse_ref_index.push_back(sr.first);
-            sparse_ref_value.push_back(sr.second);
-            dense_ref[sr.first] = sr.second;
-        }
+        std::sort(full_ref.begin(), full_ref.end());
 
         result.reset();
     };
@@ -111,17 +95,33 @@ int main(int argc, char ** argv) {
     std::vector<std::string> names;
 
     names.push_back("dense-dense");
+    std::vector<double> dd_buffer(len);
     funs.emplace_back([&]() -> double {
         double l2 = 0;
-        for (int i = 0; i < len; ++i) {
-            const double delta = dense_query[i] - dense_ref[i];
-            l2 += delta * delta;
-        }
+        scaled_ranks(
+            len,
+            full_ref,
+            dd_buffer.data(),
+            [&](const int i, const double val) -> void {
+                const double delta = dense_query[i] - val;
+                l2 += delta * delta;
+            }
+        );
         return l2;
     });
 
     names.push_back("sparse-dense-interleaved");
+    std::vector<double> sd_buffer(len);
     funs.emplace_back([&]() -> double {
+        scaled_ranks(
+            len,
+            full_ref,
+            sd_buffer.data(),
+            [&](const int i, const double val) -> void {
+                sd_buffer[i] = val;
+            }
+        );
+
         int i = 0, j = 0;
         const int snum = sparse_query.size();
         double l2 = 0;
@@ -129,17 +129,17 @@ int main(int argc, char ** argv) {
         while (j < snum) {
             const auto limit = sparse_query[j].first;
             for (; i < limit; ++i) {
-                const auto delta = dense_ref[i] - zero_query;
+                const auto delta = sd_buffer[i] - zero_query;
                 l2 += delta * delta;
             }
-            const auto delta = dense_ref[i] - sparse_query[j].second;
+            const auto delta = sd_buffer[i] - sparse_query[j].second;
             l2 += delta * delta;
             ++i;
             ++j;
         }
 
         for (; i < len; ++i) {
-            const auto delta = dense_ref[i] - zero_query;
+            const auto delta = sd_buffer[i] - zero_query;
             l2 += delta * delta;
         }
 
@@ -147,18 +147,35 @@ int main(int argc, char ** argv) {
     });
 
     names.push_back("dense-sparse-interleaved");
+    std::vector<std::pair<int, double> > dsi_tmp;
+    dsi_tmp.reserve(len);
     funs.emplace_back([&]() -> double {
+        double zero_ref;
+        scaled_ranks(
+            len,
+            negative_ref,
+            positive_ref,
+            dsi_tmp,
+            [&](const double zval) -> void {
+                zero_ref = zval;
+            },
+            [&](std::pair<int, double>& pair, const double val) -> void {
+                pair.second = val;
+            }
+        );
+        std::sort(dsi_tmp.begin(), dsi_tmp.end());
+
         int i = 0, j = 0;
-        const int snum = sparse_ref_index.size();
+        const int snum = dsi_tmp.size();
         double l2 = 0;
 
         while (j < snum) {
-            const auto limit = sparse_ref_index[j];
+            const auto limit = dsi_tmp[j].first;
             for (; i < limit; ++i) {
                 const auto delta = dense_query[i] - zero_ref;
                 l2 += delta * delta;
             }
-            const auto delta = dense_query[i] - sparse_ref_value[j];
+            const auto delta = dense_query[i] - dsi_tmp[j].second;
             l2 += delta * delta;
             ++i;
             ++j;
@@ -173,53 +190,91 @@ int main(int argc, char ** argv) {
     });
 
     names.push_back("dense-sparse-densified");
-    std::vector<double> buffer_ds(len);
+    std::vector<std::pair<int, double> > dsd_tmp;
+    dsd_tmp.reserve(len);
+    std::vector<double> dsd_buffer(len);
     funs.emplace_back([&]() -> double {
-        std::fill(buffer_ds.begin(), buffer_ds.end(), zero_ref);
-        for (const auto& ss : sparse_ref) {
-            buffer_ds[ss.first] = ss.second;
-        }
+        scaled_ranks(
+            len,
+            negative_ref,
+            positive_ref,
+            dsd_tmp,
+            [&](const double zval) -> void {
+                std::fill(dsd_buffer.begin(), dsd_buffer.end(), zval);
+            },
+            [&](std::pair<int, double>& pair, const double val) -> void {
+                dsd_buffer[pair.first] = val;
+            }
+        );
 
         double val = 0;
         for (int i = 0; i < len; ++i) {
-            const double delta = dense_query[i] - buffer_ds[i];
+            const double delta = dense_query[i] - dsd_buffer[i];
             val += delta * delta;
         }
         return val;
     });
 
     names.push_back("dense-sparse-densified2");
-    std::vector<double> sd_mapping(len);
+    std::vector<std::pair<int, double> > dsd2_tmp;
+    dsd2_tmp.reserve(len);
+    std::vector<double> dsd2_mapping(len);
     funs.emplace_back([&]() -> double {
-        const int num = sparse_ref_index.size();
-        for (int i = 0; i < num; ++i) {
-            sd_mapping[sparse_ref_index[i]] = sparse_ref_value[i] - zero_ref;
-        }
+        double zero_ref;
+        scaled_ranks(
+            len,
+            negative_ref,
+            positive_ref,
+            dsd2_tmp,
+            [&](const double zval) -> void {
+                zero_ref = zval;
+            },
+            [&](std::pair<int, double>& pair, const double val) -> void {
+                dsd2_mapping[pair.first] = val - zero_ref;
+            }
+        );
 
         double val = 0;
         for (int i = 0; i < len; ++i) {
-            const double delta = (dense_query[i] - (sd_mapping[i] + zero_ref));
+            const double delta = (dense_query[i] - (dsd2_mapping[i] + zero_ref));
             val += delta * delta;
         }
 
-        for (const auto& ss : sparse_ref) {
-            sd_mapping[ss.first] = 0;
+        for (const auto& ss : dsd2_tmp) {
+            dsd2_mapping[ss.first] = 0;
         }
         return val;
     });
 
     names.push_back("sparse-sparse-interleaved");
+    std::vector<std::pair<int, double> > ssi_tmp;
+    ssi_tmp.reserve(len);
     funs.emplace_back([&]() -> double {
+        double zero_ref;
+        scaled_ranks(
+            len,
+            negative_ref,
+            positive_ref,
+            ssi_tmp,
+            [&](const double zval) -> void {
+                zero_ref = zval;
+            },
+            [&](std::pair<int, double>& pair, const double val) -> void {
+                pair.second = val;
+            }
+        );
+        std::sort(ssi_tmp.begin(), ssi_tmp.end());
+
         double l2 = 0;
         int i1 = 0, i2 = 0;
         int both = 0;
         const int snum1 = sparse_query.size();
-        const int snum2 = sparse_ref_index.size();
+        const int snum2 = ssi_tmp.size();
 
         if (i1 < snum1 && i2 < snum2) { 
             while (1) {
                 const auto idx1 = sparse_query[i1].first;
-                const auto idx2 = sparse_ref_index[i2];
+                const auto idx2 = ssi_tmp[i2].first;
                 if (idx1 < idx2) {
                     const double delta = sparse_query[i1].second - zero_ref;
                     l2 += delta * delta;
@@ -228,14 +283,14 @@ int main(int argc, char ** argv) {
                         break;
                     }
                 } else if (idx1 > idx2) {
-                    const double delta = sparse_ref_value[i2] - zero_query;
+                    const double delta = ssi_tmp[i2].second - zero_query;
                     l2 += delta * delta;
                     ++i2;
                     if (i2 == snum2) {
                         break;
                     }
                 } else {
-                    const double delta = sparse_query[i1].second - sparse_ref_value[i2];
+                    const double delta = sparse_query[i1].second - ssi_tmp[i2].second;
                     l2 += delta * delta;
                     ++i1;
                     ++i2;
@@ -252,7 +307,7 @@ int main(int argc, char ** argv) {
             l2 += delta * delta;
         }
         for (; i2 < snum2; ++i2) { 
-            const double delta = sparse_ref_value[i2] - zero_query;
+            const double delta = ssi_tmp[i2].second - zero_query;
             l2 += delta * delta;
         }
 
@@ -262,15 +317,28 @@ int main(int argc, char ** argv) {
     });
 
     names.push_back("any-sparse-unstable");
+    std::vector<std::pair<int, double> > asu_tmp;
+    asu_tmp.reserve(len);
     funs.emplace_back([&]() -> double {
         double l2 = 0;
-        const int num = sparse_ref_index.size();
-        for (int i = 0; i < num; ++i) {
-            const double target = dense_query[sparse_ref_index[i]];
-            const double ref = sparse_ref_value[i] - zero_ref;
-            l2 += ref * (ref - 2 * target);
-        }
         const double x2 = (sparse_query.empty() ? 0 : 0.25);
+
+        double zero_ref;
+        scaled_ranks(
+            len,
+            negative_ref,
+            positive_ref,
+            asu_tmp,
+            [&](const double zval) -> void {
+                zero_ref = zval;
+            },
+            [&](std::pair<int, double>& pair, const double val) -> void {
+                const double target = dense_query[pair.first];
+                const double ref = val - zero_ref;
+                l2 += ref * (ref - 2 * target);
+            }
+        );
+
         return x2 + l2 - len * zero_ref * zero_ref;
     });
 
@@ -284,6 +352,7 @@ int main(int argc, char ** argv) {
                     throw std::runtime_error("oops that's not right");
                 }
             } else {
+                std::cout << res << "\t" << names[i] << std::endl;
                 result = res;
             }
         },
