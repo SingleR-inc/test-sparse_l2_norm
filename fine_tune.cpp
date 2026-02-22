@@ -246,6 +246,33 @@ int main(int argc, char ** argv) {
         return val;
     });
 
+    names.push_back("dense-sparse-unstable");
+    std::vector<std::pair<int, double> > asu_tmp;
+    asu_tmp.reserve(len);
+    funs.emplace_back([&]() -> double {
+        double l2 = 0;
+        const double x2 = (sparse_query.empty() ? 0 : 0.25);
+
+        double zero_ref;
+        scaled_ranks(
+            len,
+            negative_ref,
+            positive_ref,
+            asu_tmp,
+            [&](const double zval) -> void {
+                zero_ref = zval;
+            },
+            [&](std::pair<int, double>& pair, const double val) -> void {
+                const double target = dense_query[pair.first];
+                const double ref = val - zero_ref;
+                l2 += ref * (ref - 2 * target);
+            }
+        );
+
+        return x2 + l2 - len * zero_ref * zero_ref;
+    });
+
+
     names.push_back("sparse-sparse-interleaved");
     std::vector<std::pair<int, double> > ssi_tmp;
     ssi_tmp.reserve(len);
@@ -316,32 +343,6 @@ int main(int argc, char ** argv) {
         return l2;
     });
 
-    names.push_back("any-sparse-unstable");
-    std::vector<std::pair<int, double> > asu_tmp;
-    asu_tmp.reserve(len);
-    funs.emplace_back([&]() -> double {
-        double l2 = 0;
-        const double x2 = (sparse_query.empty() ? 0 : 0.25);
-
-        double zero_ref;
-        scaled_ranks(
-            len,
-            negative_ref,
-            positive_ref,
-            asu_tmp,
-            [&](const double zval) -> void {
-                zero_ref = zval;
-            },
-            [&](std::pair<int, double>& pair, const double val) -> void {
-                const double target = dense_query[pair.first];
-                const double ref = val - zero_ref;
-                l2 += ref * (ref - 2 * target);
-            }
-        );
-
-        return x2 + l2 - len * zero_ref * zero_ref;
-    });
-
     // Performing the iterations.
     auto res = eztimer::time<double>(
         funs,
@@ -352,7 +353,6 @@ int main(int argc, char ** argv) {
                     throw std::runtime_error("oops that's not right");
                 }
             } else {
-                std::cout << res << "\t" << names[i] << std::endl;
                 result = res;
             }
         },

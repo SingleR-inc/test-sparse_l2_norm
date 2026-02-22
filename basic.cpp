@@ -208,6 +208,19 @@ int main(int argc, char ** argv) {
         return val;
     });
 
+    names.push_back("dense-sparse-unstable");
+    funs.emplace_back([&]() -> double {
+        double l2 = 0;
+        const int num = sparse_ref_index.size();
+        for (int i = 0; i < num; ++i) {
+            const double target = dense_query[sparse_ref_index[i]];
+            const double ref = sparse_ref_value[i] - zero_ref;
+            l2 += ref * (ref - 2 * target);
+        }
+        const double x2 = (sparse_query.empty() ? 0 : 0.25);
+        return x2 + l2 - len * zero_ref * zero_ref;
+    });
+
     names.push_back("sparse-sparse-interleaved");
     funs.emplace_back([&]() -> double {
         double l2 = 0;
@@ -259,19 +272,6 @@ int main(int argc, char ** argv) {
         const double delta = zero_query - zero_ref;
         l2 += (len - snum1 - (snum2 - both)) * (delta * delta);
         return l2;
-    });
-
-    names.push_back("any-sparse-unstable");
-    funs.emplace_back([&]() -> double {
-        double l2 = 0;
-        const int num = sparse_ref_index.size();
-        for (int i = 0; i < num; ++i) {
-            const double target = dense_query[sparse_ref_index[i]];
-            const double ref = sparse_ref_value[i] - zero_ref;
-            l2 += ref * (ref - 2 * target);
-        }
-        const double x2 = (sparse_query.empty() ? 0 : 0.25);
-        return x2 + l2 - len * zero_ref * zero_ref;
     });
 
     // Performing the iterations.
