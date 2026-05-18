@@ -9,15 +9,9 @@
 
 typedef std::vector<std::pair<double, int> > RankedVector;
 
-template<class Process_>
-void scaled_ranks(
-    const int num_markers,
-    const RankedVector& collected,
-    double* buffer,
-    Process_ process
-) { 
+inline double centered_ranks(const int num_markers, const RankedVector& collected, double* buffer) { 
     if (num_markers == 0) {
-        return;
+        return 0;
     }
 
     const double center_rank = static_cast<double>(num_markers - 1) / static_cast<double>(2); 
@@ -46,21 +40,30 @@ void scaled_ranks(
         cur_rank += jump;
     }
 
+    return sum_squares;
+}
+
+template<class Process_>
+bool scaled_ranks(const int num_markers, const RankedVector& collected, double* buffer, Process_ process) { 
+    const double sum_squares = centered_ranks(num_markers, collected, buffer);
+
     // Special behaviour for no-variance cells; these are left as all-zero scaled ranks.
     if (sum_squares == 0) {
         for (int i = 0; i < num_markers; ++i) {
             process(i, 0.0);
         }
+        return false;
     } else {
         const double denom = 0.5 / std::sqrt(sum_squares);
         for (int i = 0; i < num_markers; ++i) {
             process(i, buffer[i] * denom);
         }
+        return true; 
     }
 }
 
 template<class ZeroProcess_, class Process_>
-void scaled_ranks(
+bool scaled_ranks(
     const int num_markers,
     const RankedVector& negative,
     const RankedVector& positive,
@@ -71,7 +74,7 @@ void scaled_ranks(
     buffer.clear();
     if (num_markers == 0) {
         zero(0);
-        return;
+        return false;
     }
 
     const double center_rank = static_cast<double>(num_markers - 1) / static_cast<double>(2); 
@@ -131,7 +134,7 @@ void scaled_ranks(
     if (sum_squares == 0) {
         zero(0);
         buffer.clear();
-        return;
+        return false;
     }
 
     const double denom = 0.5 / std::sqrt(sum_squares);
@@ -139,28 +142,28 @@ void scaled_ranks(
     for (auto& nz : buffer) {
         process(nz, nz.second * denom);
     }
+    return true;
 }
 
-inline double scaled_ranks(
+inline bool scaled_ranks(
     const int num_markers,
     const RankedVector& negative,
     const RankedVector& positive,
-    std::vector<std::pair<int, double> >& buffer
+    std::vector<std::pair<int, double> >& buffer,
+    double& zero_rank
 ) {
-    double output;
-    scaled_ranks(
+    return scaled_ranks(
         num_markers,
         negative,
         positive,
         buffer,
         [&](const double zval) -> void {
-            output = zval;
+            zero_rank = zval;
         },
         [&](std::pair<int, double>& pair, const double val) -> void {
             pair.second = val;
         }
     );
-    return output;
 }
 
 #endif

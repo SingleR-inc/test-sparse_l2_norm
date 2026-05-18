@@ -56,6 +56,8 @@ When the query is dense and the reference is sparse, we have several choices:
   computing the sum of `x2 * (x2 - 2 * y)` where `x2` is as defined for `dense-sparse-densified2`.
   The L2 norm is then calculated as `0.25 + S - n * zero_val^2` where `S` is the sum of the aforementioned product and `n` is the total number of genes.
   This represents an alternative formulation of the L2 norm that sacrifices some numerical stability for fast iteration over a sparse vector.
+- `sparse-dense-unstable-sorted`: same as `dense-sparse-unstable` except that the sparse vector is not sorted by the index.
+  This might occur if the sparse vector is derived from the query (in which case we can't sort ahead of time) and we're comparing to a dense reference.
 
 When both the query and reference are sparse, we can do:
 
@@ -69,81 +71,95 @@ When both the query and reference are sparse, we can do:
 For an Intel i7-8850H running Ubuntu Linux, we get:
 
 ```bash
-$ ./build/basic -d 0.2 -l 1000
-dense-dense                     : 4.01641e-06 ± 1.13607 %
-sparse-dense-interleaved        : 9.22126e-06 ± 1.18531 %
-dense-sparse-interleaved        : 8.91404e-06 ± 1.20366 %
-dense-sparse-densified          : 5.02495e-06 ± 1.14064 %
-dense-sparse-densified2         : 4.73814e-06 ± 1.14977 %
-dense-sparse-unstable           : 9.3097e-07 ± 1.30051 %
-sparse-sparse-interleaved       : 6.79047e-06 ± 1.22709 %
-
 $ ./build/basic -d 0.2 -l 10000
-dense-dense                     : 9.69449e-06 ± 0.587642 %
-sparse-dense-interleaved        : 2.20291e-05 ± 0.272301 %
-dense-sparse-interleaved        : 2.16533e-05 ± 0.958304 %
-dense-sparse-densified          : 1.34323e-05 ± 2.12897 %
-dense-sparse-densified2         : 1.31565e-05 ± 2.31519 %
-dense-sparse-unstable           : 2.25133e-06 ± 5.5954 %
-sparse-sparse-interleaved       : 1.65123e-05 ± 0.254594 %
+dense-dense                     : 9.67716e-06 ± 0.35449 %
+sparse-dense-interleaved        : 2.27206e-05 ± 0.666238 %
+dense-sparse-interleaved        : 2.24958e-05 ± 0.518085 %
+dense-sparse-densified          : 1.34508e-05 ± 2.12782 %
+dense-sparse-densified2         : 1.33309e-05 ± 2.42168 %
+dense-sparse-unstable           : 2.21002e-06 ± 3.7291 %
+sparse-dense-unstable-unsorted  : 2.48519e-06 ± 3.48691 %
+sparse-sparse-interleaved       : 1.77458e-05 ± 1.01638 %
 
-$ ./build/basic -d 0.05 -l 1000
-dense-dense                     : 9.6354e-07 ± 0.084539 %
-sparse-dense-interleaved        : 1.02164e-06 ± 0.320924 %
-dense-sparse-interleaved        : 1.01362e-06 ± 0.314254 %
-dense-sparse-densified          : 1.16051e-06 ± 0.135375 %
-dense-sparse-densified2         : 1.01305e-06 ± 0.131222 %
-dense-sparse-unstable           : 7.99e-08 ± 0.95656 %
-sparse-sparse-interleaved       : 4.2961e-07 ± 1.07232 %
+$ ./build/basic -d 0.2 -l 100000
+dense-dense                     : 9.64672e-05 ± 0.789742 %
+sparse-dense-interleaved        : 0.000221988 ± 0.745541 %
+dense-sparse-interleaved        : 0.000218575 ± 0.375344 %
+dense-sparse-densified          : 0.000143562 ± 1.76462 %
+dense-sparse-densified2         : 0.000144681 ± 2.35821 %
+dense-sparse-unstable           : 2.26639e-05 ± 5.27362 %
+sparse-dense-unstable-unsorted  : 3.46126e-05 ± 6.63714 %
+sparse-sparse-interleaved       : 0.000175972 ± 1.78535 %
 
-$ ./build/basic -d 0.5 -l 1000
-dense-dense                     : 1.0031e-06 ± 0.904484 %
-sparse-dense-interleaved        : 3.8956e-06 ± 7.87659 %
-dense-sparse-interleaved        : 3.69909e-06 ± 4.96098 %
-dense-sparse-densified          : 1.49956e-06 ± 2.67721 %
-dense-sparse-densified2         : 1.46455e-06 ± 1.1693 %
-dense-sparse-unstable           : 5.3749e-07 ± 1.80657 %
-sparse-sparse-interleaved       : 4.23637e-06 ± 3.83337 %
+$ ./build/basic -d 0.05 -l 10000
+dense-dense                     : 9.88294e-06 ± 1.88603 %
+sparse-dense-interleaved        : 1.01129e-05 ± 0.315345 %
+dense-sparse-interleaved        : 1.04033e-05 ± 1.98946 %
+dense-sparse-densified          : 1.25296e-05 ± 1.44665 %
+dense-sparse-densified2         : 1.12924e-05 ± 1.6 %
+dense-sparse-unstable           : 7.4941e-07 ± 8.33484 %
+sparse-dense-unstable-unsorted  : 7.6401e-07 ± 4.62903 %
+sparse-sparse-interleaved       : 4.40413e-06 ± 0.49678 %
+
+$ ./build/basic -d 0.5 -l 10000
+dense-dense                     : 9.68416e-06 ± 0.286376 %
+sparse-dense-interleaved        : 3.6256e-05 ± 0.249358 %
+dense-sparse-interleaved        : 3.66027e-05 ± 0.144778 %
+dense-sparse-densified          : 1.473e-05 ± 1.4579 %
+dense-sparse-densified2         : 1.57786e-05 ± 1.48865 %
+dense-sparse-unstable           : 5.17306e-06 ± 2.44265 %
+sparse-dense-unstable-unsorted  : 5.96087e-06 ± 3.14494 %
+sparse-sparse-interleaved       : 4.27666e-05 ± 0.212157 %
 ```
 
-For fine-tuning:
+For fine-tuning, we also consider `sparse-dense-unstable` where the query is sparse and the reference is dense.
+This will not be efficient as `dense-sparse-unstable` as we still need to compute the scaled ranks for the dense reference.
+(Note that, in the basic case, this is the same as `dense-sparse-unstable` as the dense scaled ranks are computed ahead of time.)
 
 ```bash
-$ ./build/fine_tune -d 0.2 -l 1000
-dense-dense                     : 9.59304e-06 ± 3.79061 %
-sparse-dense-interleaved        : 1.53516e-05 ± 3.82049 %
-dense-sparse-interleaved        : 2.85492e-05 ± 3.92428 %
-dense-sparse-densified          : 8.15236e-06 ± 3.80569 %
-dense-sparse-densified2         : 8.35445e-06 ± 4.15181 %
-dense-sparse-unstable           : 4.07952e-06 ± 3.827 %
-sparse-sparse-interleaved       : 2.7533e-05 ± 4.08709 %
-
 $ ./build/fine_tune -d 0.2 -l 10000
-dense-dense                     : 2.64288e-05 ± 1.30079 %
-sparse-dense-interleaved        : 4.13857e-05 ± 1.20586 %
-dense-sparse-interleaved        : 0.000107717 ± 0.621039 %
-dense-sparse-densified          : 2.37046e-05 ± 1.21688 %
-dense-sparse-densified2         : 2.36759e-05 ± 1.22765 %
-dense-sparse-unstable           : 1.10571e-05 ± 1.09754 %
-sparse-sparse-interleaved       : 0.00010189 ± 0.656838 %
+dense-dense                     : 2.74382e-05 ± 1.20837 %
+sparse-dense-interleaved        : 4.11986e-05 ± 0.543336 %
+dense-sparse-interleaved        : 0.000105643 ± 0.283504 %
+dense-sparse-densified          : 2.34307e-05 ± 1.17383 %
+dense-sparse-densified2         : 2.35664e-05 ± 1.00415 %
+dense-sparse-unstable           : 1.12498e-05 ± 0.532998 %
+sparse-dense-unstable           : 1.89637e-05 ± 1.10841 %
+sparse-dense-unstable-unsorted  : 1.94959e-05 ± 2.36502 %
+sparse-sparse-interleaved       : 0.000100596 ± 0.716732 %
 
-$ ./build/fine_tune -d 0.05 -l 1000
-dense-dense                     : 1.98422e-06 ± 0.220243 %
-sparse-dense-interleaved        : 2.34852e-06 ± 6.81117 %
-dense-sparse-interleaved        : 2.14402e-06 ± 1.37152 %
-dense-sparse-densified          : 1.46171e-06 ± 0.269653 %
-dense-sparse-densified2         : 1.25136e-06 ± 0.382146 %
-dense-sparse-unstable           : 3.1718e-07 ± 1.22646 %
-sparse-sparse-interleaved       : 1.58329e-06 ± 1.8076 %
+$ ./build/fine_tune -d 0.2 -l 100000
+dense-dense                     : 0.000310617 ± 2.85776 %
+sparse-dense-interleaved        : 0.000447954 ± 1.33866 %
+dense-sparse-interleaved        : 0.00128377 ± 0.232774 %
+dense-sparse-densified          : 0.000283887 ± 0.925263 %
+dense-sparse-densified2         : 0.000302819 ± 1.34167 %
+dense-sparse-unstable           : 0.000140279 ± 2.07608 %
+sparse-dense-unstable           : 0.000235726 ± 3.54821 %
+sparse-dense-unstable-unsorted  : 0.00024886 ± 2.73481 %
+sparse-sparse-interleaved       : 0.00122911 ± 0.325709 %
 
-$ ./build/fine_tune -d 0.5 -l 1000
-dense-dense                     : 3.88538e-06 ± 1.95473 %
-sparse-dense-interleaved        : 6.99965e-06 ± 2.00358 %
-dense-sparse-interleaved        : 2.17285e-05 ± 1.98859 %
-dense-sparse-densified          : 4.02357e-06 ± 3.8273 %
-dense-sparse-densified2         : 4.06212e-06 ± 2.1938 %
-dense-sparse-unstable           : 2.93423e-06 ± 3.22236 %
-sparse-sparse-interleaved       : 2.26536e-05 ± 2.11379 %
+$ ./build/fine_tune -d 0.05 -l 10000
+dense-dense                     : 2.20143e-05 ± 0.869893 %
+sparse-dense-interleaved        : 2.35321e-05 ± 1.5116 %
+dense-sparse-interleaved        : 2.72197e-05 ± 0.817433 %
+dense-sparse-densified          : 1.56123e-05 ± 2.28693 %
+dense-sparse-densified2         : 1.35633e-05 ± 1.50595 %
+dense-sparse-unstable           : 2.94963e-06 ± 1.136 %
+sparse-dense-unstable           : 1.23217e-05 ± 2.4734 %
+sparse-dense-unstable-unsorted  : 1.229e-05 ± 1.81857 %
+sparse-sparse-interleaved       : 2.10924e-05 ± 1.07797 %
+
+$ ./build/fine_tune -d 0.5 -l 10000
+dense-dense                     : 3.74883e-05 ± 2.30634 %
+sparse-dense-interleaved        : 6.52441e-05 ± 1.31196 %
+dense-sparse-interleaved        : 0.000267795 ± 0.410695 %
+dense-sparse-densified          : 4.03746e-05 ± 2.54741 %
+dense-sparse-densified2         : 4.40882e-05 ± 2.06429 %
+dense-sparse-unstable           : 2.77462e-05 ± 1.05438 %
+sparse-dense-unstable           : 3.26929e-05 ± 2.27298 %
+sparse-dense-unstable-unsorted  : 3.31167e-05 ± 2.45959 %
+sparse-sparse-interleaved       : 0.00027094 ± 0.368072 %
 ```
 
 Some comments:
@@ -153,4 +169,6 @@ Some comments:
 - `dense-sparse-unstable` is consistently good and indicates that storing sparse references is beneficial.
   I would wager that some numerical inaccuracy is acceptable here as distances close to zero would result in correlations close to 1, at which point small errors can be ignored.
   It is probably a good idea to clamp the correlations to [-1, 1] to avoid egregiously wrong results, e.g., correlations > 1.
-- There is no benefit from the query being sparse, which allows us to simplify the **singlepp** code considerably. 
+- We should sort the query to improve cache locality, even though the unstable sparse/dense calculations don't strictly need sorting.
+  It's quite a bit faster for the basic L2 calculations, it's no worse for the fine-tuning calculations,
+  and the cost of sorting each query is amortized over the many L2 calculations involving that query.

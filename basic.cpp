@@ -28,6 +28,8 @@ int main(int argc, char ** argv) {
     RankedVector negative_query, positive_query;
     std::vector<std::pair<int, double> > sparse_query;
     sparse_query.reserve(len);
+    std::vector<std::pair<int, double> > sparse_query_unsorted;
+    sparse_query_unsorted.reserve(len);
     double zero_query;
     std::vector<double> dense_query(len);
 
@@ -67,7 +69,8 @@ int main(int argc, char ** argv) {
 
         std::sort(negative_query.begin(), negative_query.end());
         std::sort(positive_query.begin(), positive_query.end());
-        zero_query = scaled_ranks(len, negative_query, positive_query, sparse_query);
+        scaled_ranks(len, negative_query, positive_query, sparse_query, zero_query);
+        sparse_query_unsorted = sparse_query;
         std::sort(sparse_query.begin(), sparse_query.end());
         std::fill(dense_query.begin(), dense_query.end(), zero_query);
         for (const auto& sq : sparse_query) {
@@ -90,7 +93,7 @@ int main(int argc, char ** argv) {
 
         std::sort(negative_ref.begin(), negative_ref.end());
         std::sort(positive_ref.begin(), positive_ref.end());
-        zero_ref = scaled_ranks(len, negative_ref, positive_ref, sparse_ref);
+        scaled_ranks(len, negative_ref, positive_ref, sparse_ref, zero_ref);
         std::sort(sparse_ref.begin(), sparse_ref.end());
 
         sparse_ref_index.clear();
@@ -217,8 +220,22 @@ int main(int argc, char ** argv) {
             const double ref = sparse_ref_value[i] - zero_ref;
             l2 += ref * (ref - 2 * target);
         }
-        const double x2 = (sparse_query.empty() ? 0 : 0.25);
+        const double x2 = (num == 0 ? 0 : 0.25);
         return x2 + l2 - len * zero_ref * zero_ref;
+    });
+
+    names.push_back("sparse-dense-unstable-unsorted");
+    funs.emplace_back([&]() -> double {
+        double l2 = 0;
+        const int num = sparse_query_unsorted.size();
+        for (int i = 0; i < num; ++i) {
+            const auto& current = sparse_query_unsorted[i];
+            const double target = dense_ref[current.first];
+            const double query = current.second - zero_query;
+            l2 += query * (query - 2 * target);
+        }
+        const double x2 = (num == 0 ? 0 : 0.25);
+        return x2 + l2 - len * zero_query * zero_query;
     });
 
     names.push_back("sparse-sparse-interleaved");

@@ -26,8 +26,9 @@ int main(int argc, char ** argv) {
 
     // Setting up all of the data structures.
     RankedVector negative_query, positive_query;
-    std::vector<std::pair<int, double> > sparse_query;
+    std::vector<std::pair<int, double> > sparse_query, sparse_query_unsorted;
     sparse_query.reserve(len);
+    sparse_query_unsorted.reserve(len);
     double zero_query;
     std::vector<double> dense_query(len);
 
@@ -43,6 +44,7 @@ int main(int argc, char ** argv) {
     opt.iterations = iterations;
     opt.setup = [&]() -> void {
         // Generating the query elements.
+        // We assume that all of these are already sorted by index as it's not much effort to do it once for the query.
         negative_query.clear();
         positive_query.clear();
         for (int i = 0; i < len; ++i) {
@@ -58,7 +60,8 @@ int main(int argc, char ** argv) {
 
         std::sort(negative_query.begin(), negative_query.end());
         std::sort(positive_query.begin(), positive_query.end());
-        zero_query = scaled_ranks(len, negative_query, positive_query, sparse_query);
+        scaled_ranks(len, negative_query, positive_query, sparse_query, zero_query);
+        sparse_query_unsorted = sparse_query;
         std::sort(sparse_query.begin(), sparse_query.end());
         std::fill(dense_query.begin(), dense_query.end(), zero_query);
         for (const auto& sq : sparse_query) {
@@ -66,6 +69,7 @@ int main(int argc, char ** argv) {
         }
 
         // Generating the reference elements.
+        // These are sorted by value, not index, because that avoids a round of resorting after subsetting. 
         negative_ref.clear();
         positive_ref.clear();
         full_ref.clear();
@@ -250,11 +254,8 @@ int main(int argc, char ** argv) {
     std::vector<std::pair<int, double> > asu_tmp;
     asu_tmp.reserve(len);
     funs.emplace_back([&]() -> double {
-        double l2 = 0;
-        const double x2 = (sparse_query.empty() ? 0 : 0.25);
-
-        double zero_ref;
-        scaled_ranks(
+        double l2 = 0, zero_ref;
+        bool has_nonzero = scaled_ranks(
             len,
             negative_ref,
             positive_ref,
@@ -268,10 +269,46 @@ int main(int argc, char ** argv) {
                 l2 += ref * (ref - 2 * target);
             }
         );
-
-        return x2 + l2 - len * zero_ref * zero_ref;
+        return (has_nonzero ? 0.25 : 0) + l2 - len * zero_ref * zero_ref;
     });
 
+    names.push_back("sparse-dense-unstable");
+    std::vector<double> sdu_buffer(len);
+    funs.emplace_back([&]() -> double {
+        // Similar to dense-sparse-unstable except that the query is the sparse one.
+        // This means we need to compute the centered ranks for the dense reference.
+        auto ss = centered_ranks(len, full_ref, sdu_buffer.data());
+        const double mult = (ss ? 0.5 / std::sqrt(ss) : 0);
+        const int num = sparse_query.size();
+        double l2 = 0;
+        for (int i = 0; i < num; ++i) {
+            const auto& current = sparse_query[i];
+            const double target = sdu_buffer[current.first] * mult;
+            const double query = current.second - zero_query;
+            l2 += query * (query - 2 * target);
+        }
+        const double x2 = (num == 0 ? 0 : 0.25);
+        return x2 + l2 - len * zero_query * zero_query;
+    });
+
+    names.push_back("sparse-dense-unstable-unsorted");
+    std::vector<double> sduu_buffer(len);
+    funs.emplace_back([&]() -> double {
+        // Similar to dense-sparse-unstable except that the query is the sparse one.
+        // This means we need to compute the centered ranks for the dense reference.
+        auto ss = centered_ranks(len, full_ref, sduu_buffer.data());
+        const double mult = (ss ? 0.5 / std::sqrt(ss) : 0);
+        const int num = sparse_query_unsorted.size();
+        double l2 = 0;
+        for (int i = 0; i < num; ++i) {
+            const auto& current = sparse_query_unsorted[i];
+            const double target = sduu_buffer[current.first] * mult;
+            const double query = current.second - zero_query;
+            l2 += query * (query - 2 * target);
+        }
+        const double x2 = (num == 0 ? 0 : 0.25);
+        return x2 + l2 - len * zero_query * zero_query;
+    });
 
     names.push_back("sparse-sparse-interleaved");
     std::vector<std::pair<int, double> > ssi_tmp;
